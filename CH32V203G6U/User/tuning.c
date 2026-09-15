@@ -28,7 +28,9 @@ tune_t g_tune = {
     1.0f, 0.0f,                         /* yaw: 单位旋转 */
     XY_LPF_DEF,
     TRIM_K_DEF, TRIM_LIM_DEF, TRIM_GATE_DEF,
-    0.0f, 0.0f                          /* trim_x, trim_y: 零点偏置 */
+    0.0f, 0.0f,                         /* trim_x, trim_y: 零点偏置 */
+    1.0f,                               /* gain_y: 轴比值 */
+    { 1.0f, 1.0f, 1.0f, 1.0f }          /* coil_gain: 每路强度 */
 };
 
 /* 结构体必须是纯 float 连续排列, 参数 ID 才能当下标用。字段数对不上就编译不过。*/
@@ -46,7 +48,9 @@ static const char * const param_names[TUNE_PARAM_COUNT] = {
     "ct_lag",
     "tilt_x", "tilt_y", "yaw_cos", "yaw_sin",
     "xy_lpf", "trim_k", "trim_lim", "trim_gate",
-    "trim_x", "trim_y"
+    "trim_x", "trim_y",
+    "gain_y",
+    "gain_a", "gain_b", "gain_c", "gain_d"
 };
 
 static uint8_t  stream_div;         /* 0 = 关闭 */
@@ -225,6 +229,14 @@ void Tuning_HandleFrame(const uint8_t *data, uint8_t len)
                 {
                     send_param(26);
                     send_param(27);
+                }
+                else send_ack(cmd, 1);
+                break;
+            case TUNE_ACT_BAL_COILS:
+                if(Levitation_BalanceCoils() == 0)
+                {
+                    uint8_t k;
+                    for(k = 0; k < COIL_NUM; k++) send_param((uint8_t)(29 + k));
                 }
                 else send_ack(cmd, 1);
                 break;

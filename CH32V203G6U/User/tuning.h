@@ -36,6 +36,7 @@
 #define TUNE_ACT_CAL_CT     0x05    /* 只重测串扰(带矿石), 保留零点 */
 #define TUNE_ACT_CAL_TILT   0x06    /* 矿石摆正中时标传感器倾斜 */
 #define TUNE_ACT_ZERO_HERE  0x07    /* 把当前读数抓成零点 (写入 trim_x/trim_y) */
+#define TUNE_ACT_BAL_COILS  0x08    /* 按标定读数把四路强度拉齐 (写 coil_gain[]) */
 
 /* 上行类型 */
 #define TUNE_UP_TELEM       0x01
@@ -80,9 +81,26 @@ typedef struct {
      * trim_k = 0 时这就是纯手动零点, trim_k != 0 时由积分器往里写。
      * 【不随 Restart 清零】—— 它是参数, 行为要和 kz 之类一致, 要清就显式写 0。*/
     float trim_x, trim_y;               /* 26,27 */
+    /* ---- 增益修正 ----
+     * 两件不同的事, 不要混:
+     *
+     *  gain_y: 【轴】比值, 只乘在 Y 通道上(X 恒为 1, 只需要相对值)。P 和 D 一起
+     *      乘, 所以 kd/kp 比值不受影响 —— 这是做成一个乘子而不是拆成 kp_x/kp_y
+     *      的理由: 拆开就得在两个轴上各维护一次阻尼比, 多一倍出错机会。
+     *
+     *  coil_gain[]: 【每路】强度。注意它【不能】造成轴不对称 ——
+     *      X 有效增益 = Σ g_i·mix_x[i]² = Σ g_i,  Y 同理 = Σ g_i, 两者恒等。
+     *      它真正修的是【交叉耦合】: 四路不等时 Σ g_i·mix_x[i]·mix_y[i] != 0,
+     *      单路弱 δ 就产生 δ 的 X-Y 耦合, 环路推的方向与误差方向差一个角度,
+     *      现象是"绕着转"或"朝某个固定方向飞"而不是简单的一轴偏软。
+     *      乘在混合【之后】的整个 f 上(含 u_z): 线圈弱就该整体驱动得更狠。
+     *      副作用是 Σ g_i·mix_x[i] != 0 会让横向纠偏漏出竖直分量 —— 而这正是
+     *      把四路拉齐要解决的问题本身, 拉齐之后零和性质自动恢复。 */
+    float gain_y;                       /* 28 */
+    float coil_gain[COIL_NUM];          /* 29..32 */
 } tune_t;
 
-#define TUNE_PARAM_COUNT    28
+#define TUNE_PARAM_COUNT    33
 
 extern tune_t g_tune;
 

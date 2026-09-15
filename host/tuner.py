@@ -50,6 +50,7 @@ ACT_SET_HEIGHT = 0x04
 ACT_CAL_CT = 0x05
 ACT_CAL_TILT = 0x06
 ACT_ZERO_HERE = 0x07
+ACT_BAL_COILS = 0x08
 
 UP_TELEM = 0x01
 UP_PARAM = 0x02
@@ -511,6 +512,15 @@ class Tuner(QMainWindow):
         b_cal = QPushButton("读取标定结果")
         b_cal.clicked.connect(lambda: self._send(build_frame(CMD_GET_CAL)))
         cl.addWidget(b_cal, 8, 0, 1, 4)
+        b_bal = QPushButton("按标定均衡四路强度")
+        b_bal.setToolTip("每路取 min(正向,反向) 作为有效强度, 按最弱的那路归一, "
+                         "结果写进 gain_a..gain_d。\n"
+                         "四路不等造成的是 X-Y【交叉耦合】而不是轴不对称 —— "
+                         "X/Y 的有效增益都等于 Σgain, 恒等; 真正变的是\n"
+                         "Σ gain·mix_x·mix_y, 四路相等时为 0, 单路弱 δ 就有 δ 的耦合。\n"
+                         "现象是环路推的方向与误差方向差一个角度: 绕着转, 或朝某个固定方向飞。")
+        b_bal.clicked.connect(lambda: self._action(ACT_BAL_COILS, 0))
+        cl.addWidget(b_bal, 9, 0, 1, 4)
         left.addWidget(gb_cal)
 
         gb_test = QGroupBox("开环单路测试 (裸驱动, 不经增益校正)")

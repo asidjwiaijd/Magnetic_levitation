@@ -702,6 +702,45 @@ void Levitation_GetTrim(int16_t *tx, int16_t *ty)
  * 用滤波后的 bx_f/by_f 而不是瞬时值: 抓的是"平均位置", 单拍噪声不该被固化进
  * 零点。要求 LEV_RUN —— 矿石不在场时 bx_f 是纯噪声, 抓了只会把噪声写进去。
  * 返回 0 = 成功。 */
+/* 按串扰标定的读数把四路强度拉齐。
+ *
+ * 数据早就有了, 只是一直没这么用: measure_crosstalk() 每路都测了正/反向场强,
+ * 但那两个数此前只用来做【同一路内】的正反向均衡(Coil_SetDirGain), 从没做过
+ * 【路与路之间】的均衡。而四路不等造成的是 X-Y 交叉耦合(见 tuning.h), 正是
+ * "朝某个固定方向飞"的一个典型成因。
+ *
+ * 每路的有效强度取 min(正向, 反向) —— 分方向增益已经把强的一侧压到弱的一侧,
+ * 所以校正后每路实际能给出的就是这个较小值。
+ *
+ * 只衰减不放大(最弱的那路 gain = 1), 与 Coil_SetDirGain 同一套哲学: 标定异常
+ * 时宁可整体变弱, 也不要凭一个可疑的系数把某路输出放飞。
+ * 下限 0.3: 某路弱到 3 倍以上不是不对称而是坏了, 让它以"四路明显不等"的形式
+ * 暴露在标定读数里, 不要被一个离谱的增益悄悄抹平。
+ *
+ * 返回 0 = 成功; 1 = 还没标定过(四路强度都是 0)。 */
+uint8_t Levitation_BalanceCoils(void)
+{
+    float s[COIL_NUM], smin;
+    uint8_t i;
+
+    smin = 0.0f;
+    for(i = 0; i < COIL_NUM; i++)
+    {
+        s[i] = (cal_mag_p[i] < cal_mag_n[i]) ? cal_mag_p[i] : cal_mag_n[i];
+        if(s[i] < 1.0f) return 1;               /* 有路没测出来, 不动 */
+        if(i == 0 || s[i] < smin) smin = s[i];
+    }
+
+    for(i = 0; i < COIL_NUM; i++)
+    {
+        float g = smin / s[i];
+        if(g > 1.0f) g = 1.0f;
+        if(g < 0.3f) g = 0.3f;
+        g_tune.coil_gain[i] = g;
+    }
+    return 0;
+}
+
 uint8_t Levitation_ZeroHere(void)
 {
     if(state != LEV_RUN) return 1;
@@ -931,7 +970,9 @@ void Levitation_Task(void)
 
     u_x = g_tune.lat_sign * lat_norm_f *
           (g_tune.kp_xy * ex + g_tune.kd_xy * d_x_filt);
-    u_y = g_tune.lat_sign * lat_norm_f *
+    /* gain_y 同时乘 P 和 D, 所以 kd/kp 比值在两个轴上自动一致 —— 这是做成
+     * 一个乘子而不是拆成 kp_x/kp_y 的全部理由。 */
+    u_y = g_tune.lat_sign * lat_norm_f * g_tune.gain_y *
           (g_tune.kp_xy * ey + g_tune.kd_xy * d_y_filt);
 
     /* ---- 设定点自整定 ---- 移植自参考工程, 推导见 board.h 的 TRIM_K_DEF。
@@ -975,7 +1016,11 @@ void Levitation_Task(void)
 
     for(i = 0; i < COIL_NUM; i++)
     {
-        float f = u_z + (float)mix_x[i] * u_x + (float)mix_y[i] * u_y;
+        /* 每路强度修正乘在混合【之后】的整个 f 上(含 u_z): 这一路弱就整体驱动
+         * 得更狠, 这才是它的物理含义。见 tuning.h —— 它修的是交叉耦合, 修不了
+         * 轴不对称(X/Y 的有效增益都等于 Σ g_i, 恒等)。 */
+        float f = (u_z + (float)mix_x[i] * u_x + (float)mix_y[i] * u_y)
+                  * g_tune.coil_gain[i];
         int32_t v;
 
         /* 按 COIL_CMD_LIMIT 而不是 COIL_CMD_MAX 限幅: Coil_Set 内部也是按

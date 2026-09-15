@@ -48,6 +48,9 @@ uint16_t    Levitation_GetSensorRate(void);
 /* 设定点自整定偏置 (磁场 counts)。收敛后 bx 恒等于 trim, 所以不单独看它就
  * 无法区分「矿石真偏了」和「trim 把传感器偏置吃掉了」。 */
 void        Levitation_GetTrim(int16_t *tx, int16_t *ty);
+/* 把当前读数抓成零点(写 trim_x/trim_y)。自整定积分的手动版本, 一步到位。
+ * 要求 LEV_RUN。返回 0 = 成功。 */
+uint8_t     Levitation_ZeroHere(void);
 /* 原始三轴读数 (未扣零点与串扰)。判断有没有逼近满量程只能看这个。 */
 void        Levitation_GetRawField(int16_t *bx, int16_t *by, int16_t *bz);
 /* kz 被改写后重算目标磁场 */

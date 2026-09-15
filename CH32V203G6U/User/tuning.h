@@ -35,6 +35,7 @@
 #define TUNE_ACT_SET_HEIGHT 0x04    /* arg = 目标高度(mm) */
 #define TUNE_ACT_CAL_CT     0x05    /* 只重测串扰(带矿石), 保留零点 */
 #define TUNE_ACT_CAL_TILT   0x06    /* 矿石摆正中时标传感器倾斜 */
+#define TUNE_ACT_ZERO_HERE  0x07    /* 把当前读数抓成零点 (写入 trim_x/trim_y) */
 
 /* 上行类型 */
 #define TUNE_UP_TELEM       0x01
@@ -73,9 +74,15 @@ typedef struct {
      *              否则门限永远不会先于钳位动作(推导见 board.h) */
     float xy_lpf;                       /* 22 */
     float trim_k, trim_lim, trim_gate;  /* 23,24,25 */
+    /* 零点偏置本身。放进参数表(而不是留成 levitation.c 的内部状态)是为了能【手动
+     * 直接写】—— 自整定积分要求矿石能自由移动, 夹具场合或者快环还没调出来的时候
+     * 它根本不可能收敛, 那些时候只能靠手动微调。两种方式共用同一个存储:
+     * trim_k = 0 时这就是纯手动零点, trim_k != 0 时由积分器往里写。
+     * 【不随 Restart 清零】—— 它是参数, 行为要和 kz 之类一致, 要清就显式写 0。*/
+    float trim_x, trim_y;               /* 26,27 */
 } tune_t;
 
-#define TUNE_PARAM_COUNT    26
+#define TUNE_PARAM_COUNT    28
 
 extern tune_t g_tune;
 

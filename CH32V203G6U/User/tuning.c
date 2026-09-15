@@ -27,7 +27,8 @@ tune_t g_tune = {
     0.0f, 0.0f,                         /* tilt_x, tilt_y: 未标定 = 不校正 */
     1.0f, 0.0f,                         /* yaw: 单位旋转 */
     XY_LPF_DEF,
-    TRIM_K_DEF, TRIM_LIM_DEF, TRIM_GATE_DEF
+    TRIM_K_DEF, TRIM_LIM_DEF, TRIM_GATE_DEF,
+    0.0f, 0.0f                          /* trim_x, trim_y: 零点偏置 */
 };
 
 /* 结构体必须是纯 float 连续排列, 参数 ID 才能当下标用。字段数对不上就编译不过。*/
@@ -44,7 +45,8 @@ static const char * const param_names[TUNE_PARAM_COUNT] = {
     "sign_a", "sign_b", "sign_c", "sign_d",
     "ct_lag",
     "tilt_x", "tilt_y", "yaw_cos", "yaw_sin",
-    "xy_lpf", "trim_k", "trim_lim", "trim_gate"
+    "xy_lpf", "trim_k", "trim_lim", "trim_gate",
+    "trim_x", "trim_y"
 };
 
 static uint8_t  stream_div;         /* 0 = 关闭 */
@@ -215,6 +217,16 @@ void Tuning_HandleFrame(const uint8_t *data, uint8_t len)
                 break;
             case TUNE_ACT_CAL_TILT:
                 send_ack(cmd, Levitation_CalibrateTilt() ? 1 : 0);
+                break;
+            case TUNE_ACT_ZERO_HERE:
+                /* 抓完把两个值回读给上位机, 否则参数表还显示旧值, 会让人
+                 * 以为没生效 —— 而这个操作恰恰没有任何其它可见反馈。 */
+                if(Levitation_ZeroHere() == 0)
+                {
+                    send_param(26);
+                    send_param(27);
+                }
+                else send_ack(cmd, 1);
                 break;
             case TUNE_ACT_CAL_CT:
                 Levitation_RecalCrosstalk();

@@ -49,6 +49,7 @@ ACT_CLEAR_FAULT = 0x03
 ACT_SET_HEIGHT = 0x04
 ACT_CAL_CT = 0x05
 ACT_CAL_TILT = 0x06
+ACT_ZERO_HERE = 0x07
 
 UP_TELEM = 0x01
 UP_PARAM = 0x02
@@ -439,6 +440,42 @@ class Tuner(QMainWindow):
         b_calh.clicked.connect(lambda: self._action(ACT_CAL_HEIGHT, self.sp_calh.value()))
         g.addWidget(b_calh, 6, 0, 1, 2)
         left.addWidget(gb_act)
+
+        # ---- 零点微调 ----
+        # 零点歪 = 环路认为的中心和真中心差一个常数, 表现为"总有一个力朝一个方向推"。
+        # 自整定积分本来就是干这个的, 但它要求矿石能自由移动且快环抓得住 —— 夹具
+        # 场合和快环还没调出来的时候两个都不成立, 只能手动。
+        gb_zero = QGroupBox("零点微调 (trim_x / trim_y)")
+        zl = QGridLayout(gb_zero)
+        zl.addWidget(QLabel("步长"), 0, 0)
+        self.sp_zstep = QSpinBox()
+        self.sp_zstep.setRange(1, 200)
+        self.sp_zstep.setValue(10)
+        self.sp_zstep.setToolTip("单位是磁场 counts。r=45mm 处约 23 counts/mm, "
+                                 "所以 10 大致是 0.4mm。")
+        zl.addWidget(self.sp_zstep, 0, 1, 1, 3)
+        # 按钮方向按【轨迹图上看到的方向】走, 不是按参数符号 —— 用户要的是
+        # "往我看到的这边推一点", 中间那层符号转换不该由人脑来做。
+        # 位置取反勾上时显示的 X 是 -x, 所以步进也要跟着反, 否则按钮和图反向。
+        for col, (lbl, ax, sgn) in enumerate([
+                ("X −", "x", -1), ("X +", "x", +1),
+                ("Y −", "y", -1), ("Y +", "y", +1)]):
+            b = QPushButton(lbl)
+            b.setToolTip("按轨迹图上看到的方向移动矿石 (已跟随「位置取反」)")
+            b.clicked.connect(lambda _, a=ax, s=sgn: self._nudge_zero(a, s))
+            zl.addWidget(b, 1, col)
+        b_zhere = QPushButton("以当前位置为零点")
+        b_zhere.setToolTip("把矿石此刻的读数直接抓成零点 —— 自整定积分的手动版本, "
+                           "一步到位而不是 3s 收敛。用手或夹具把矿石摆到你想要它停的"
+                           "地方再点。要求处于悬浮中状态。")
+        b_zhere.clicked.connect(lambda: self._action(ACT_ZERO_HERE, 0))
+        zl.addWidget(b_zhere, 2, 0, 1, 4)
+        b_zclr = QPushButton("零点清零")
+        b_zclr.clicked.connect(self._clear_zero)
+        zl.addWidget(b_zclr, 3, 0, 1, 4)
+        self.lb_zero = QLabel("trim = (—, —)")
+        zl.addWidget(self.lb_zero, 4, 0, 1, 4)
+        left.addWidget(gb_zero)
 
         gb_cal = QGroupBox("标定读数 (每 1000 指令的场强)")
         cl = QGridLayout(gb_cal)
@@ -899,6 +936,13 @@ class Tuner(QMainWindow):
         self.lb_info.setText("   ".join(tags))
         self.lb_info.setStyleSheet("color:#f05050" if nsat else "")
 
+        # 零点面板。误差 bx-trim 才是环路真正在追的量, 而屏幕上到处显示的都是 bx,
+        # 两者在 trim != 0 时完全不同 —— 不把误差摆出来就会反复掉进
+        # "矿石明明在中心, 输出为什么不是零"那个坑。
+        tx, ty = d.get("tx", 0), d.get("ty", 0)
+        self.lb_zero.setText(f"trim = ({tx:+d}, {ty:+d})    "
+                             f"误差 = ({d['bx'] - tx:+d}, {d['by'] - ty:+d})")
+
         if not d.get("has_raw"):
             raw_txt = "原始   B = 旧固件未上报 (请重新烧录)"
         else:
@@ -922,8 +966,8 @@ class Tuner(QMainWindow):
                 if self.ck_posinv.isChecked():
                     tr = (-tr[0], -tr[1])
                 tn = (tr[0] ** 2 + tr[1] ** 2) ** 0.5
-                pos_txt += (f"      自整定 trim = ({d['tx']:+5d},{d['ty']:+5d}) counts"
-                            f" ≈ {tn/10:4.1f} mm 的传感器偏置")
+                pos_txt += (f"      零点 trim = ({d['tx']:+5d},{d['ty']:+5d}) counts"
+                            f" ≈ {tn/10:4.1f} mm")
         # 传感器到矿石的真实距离 r = 立方根(kz/|Bz|)。它【不依赖 H_SENSOR_OFFSET】,
         # 所以传感器一旦挪位置(飞线抬高之类), 就靠它来反推新的 offset:
         #   Δ = r_挪之前 - r_挪之后   ->   新 offset = 旧 offset - 10Δ
@@ -953,6 +997,34 @@ class Tuner(QMainWindow):
                 except (ValueError, AttributeError):
                     return None
         return None
+
+    def _set_param(self, name, val):
+        """按名字下发一个参数。名字→ID 的对应来自设备的 PARAM_LIST, 所以上位机
+        这边不硬编码 ID —— 固件增删字段时这里不用跟着改。"""
+        for pid, nm in self.param_names.items():
+            if nm == name:
+                self._send(build_frame(CMD_PARAM_SET,
+                                       bytes([pid]) + struct.pack("<f", float(val))))
+                return True
+        self.status.showMessage(f"设备没有参数 {name} (固件是旧的?)", 4000)
+        return False
+
+    def _nudge_zero(self, axis, sgn):
+        """零点微调。基准取【遥测里的实时值】而不是参数表 —— 参数表只在设备回读
+        时才刷新, 自整定开着的时候它一直是过期的, 拿它当基准会把积分的成果抹掉。"""
+        if self.last_d is None:
+            return
+        step = self.sp_zstep.value() * sgn
+        # 按钮写的是"轨迹图上看到的方向"。取反勾上时显示的 X 是 -x, 步进跟着反,
+        # 否则按钮和图会反向 —— 那是最难自查的一类错。
+        if self.ck_posinv.isChecked():
+            step = -step
+        cur = self.last_d.get("tx" if axis == "x" else "ty", 0)
+        self._set_param("trim_x" if axis == "x" else "trim_y", cur + step)
+
+    def _clear_zero(self):
+        self._set_param("trim_x", 0.0)
+        self._set_param("trim_y", 0.0)
 
     def _clear_pos(self):
         """翻转取向时把旧点丢掉 —— 缓存里存的是翻转后的结果, 留着会和新点混在

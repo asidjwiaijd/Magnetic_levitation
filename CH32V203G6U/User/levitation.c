@@ -139,9 +139,6 @@ static float lat_norm_f = 1.0f;     /* 滤波后的横向增益归一化系数 *
  * 参考工程是先滤读数再算误差, P 和 D 都用滤波值 —— 照搬。 */
 static float bx_f, by_f;
 
-/* 设定点自整定偏置, 见 board.h 的 TRIM_K_DEF。
- * 跨起浮保留(拿开矿石再放回不必重新收敛 3s), 只在显式 Restart/Init 时清零。 */
-static float bx_trim, by_trim;
 
 static int16_t out_cmd[COIL_NUM];
 
@@ -605,7 +602,6 @@ void Levitation_Init(void)
     for(i = 0; i < COIL_NUM; i++) { out_cmd[i] = 0; cmd_lag[i] = 0.0f; }
 
     bx0 = by0 = bz0 = 0.0f;
-    bx_trim = by_trim = 0.0f;
     fail_count = 0;
     tick_count = 0;
     cur_h_mm = 0;
@@ -693,8 +689,25 @@ uint16_t Levitation_GetSensorRate(void)
  * 而这两者在 bx 上长得完全一样(收敛后 bx 恒等于 trim)。 */
 void Levitation_GetTrim(int16_t *tx, int16_t *ty)
 {
-    *tx = (int16_t)bx_trim;
-    *ty = (int16_t)by_trim;
+    *tx = (int16_t)g_tune.trim_x;
+    *ty = (int16_t)g_tune.trim_y;
+}
+
+/* 把当前读数抓成零点: 从此刻起"矿石现在这个位置"就是环路眼里的中心。
+ *
+ * 这是自整定积分的手动版本, 一步到位而不是 3s 收敛。存在的理由是自整定有两个
+ * 前提 —— 快环抓得住、矿石能自由移动 —— 夹具场合和快环还没调出来的时候两个都
+ * 不成立, 而恰恰是那些时候最需要把零点摆正。
+ *
+ * 用滤波后的 bx_f/by_f 而不是瞬时值: 抓的是"平均位置", 单拍噪声不该被固化进
+ * 零点。要求 LEV_RUN —— 矿石不在场时 bx_f 是纯噪声, 抓了只会把噪声写进去。
+ * 返回 0 = 成功。 */
+uint8_t Levitation_ZeroHere(void)
+{
+    if(state != LEV_RUN) return 1;
+    g_tune.trim_x = bx_f;
+    g_tune.trim_y = by_f;
+    return 0;
 }
 
 void Levitation_GetRawField(int16_t *bx, int16_t *by, int16_t *bz)
@@ -713,7 +726,6 @@ void Levitation_Restart(void)
 {
     Coil_DisableAll();
     reset_pid();
-    bx_trim = by_trim = 0.0f;   /* 显式重启才清 trim, 见变量声明处 */
     fail_count = 0;
     cur_h_mm = 0;
     cur_h_01mm = 0;
@@ -914,8 +926,8 @@ void Levitation_Task(void)
     }
 
     /* 误差 = 滤波读数 - 自整定偏置 */
-    ex = bx_f - bx_trim;
-    ey = by_f - by_trim;
+    ex = bx_f - g_tune.trim_x;
+    ey = by_f - g_tune.trim_y;
 
     u_x = g_tune.lat_sign * lat_norm_f *
           (g_tune.kp_xy * ex + g_tune.kd_xy * d_x_filt);
@@ -941,15 +953,15 @@ void Levitation_Task(void)
          * 永远不可能先动。详见 board.h 的 TRIM_GATE_DEF。 */
         if(fabs_f(ex) < gate)
         {
-            bx_trim += g_tune.trim_k * u_x;
-            if(bx_trim >  lim) bx_trim =  lim;
-            if(bx_trim < -lim) bx_trim = -lim;
+            g_tune.trim_x += g_tune.trim_k * u_x;
+            if(g_tune.trim_x >  lim) g_tune.trim_x =  lim;
+            if(g_tune.trim_x < -lim) g_tune.trim_x = -lim;
         }
         if(fabs_f(ey) < gate)
         {
-            by_trim += g_tune.trim_k * u_y;
-            if(by_trim >  lim) by_trim =  lim;
-            if(by_trim < -lim) by_trim = -lim;
+            g_tune.trim_y += g_tune.trim_k * u_y;
+            if(g_tune.trim_y >  lim) g_tune.trim_y =  lim;
+            if(g_tune.trim_y < -lim) g_tune.trim_y = -lim;
         }
     }
 

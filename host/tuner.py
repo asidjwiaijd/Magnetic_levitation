@@ -71,6 +71,11 @@ MAX_FRAME_BODY = 64
 ORE_PRESENT_MIN_BZ = 133
 LIMIT_01MM = 100            # 赛规的横向窗口 ±1cm
 
+# 必须与 board.h 的 COIL_CMD_LIMIT 一致。曾经这里硬编码 850 而固件已经砍到 600,
+# 结果是"线圈饱和"的告警【永远不会出现】—— 两路顶在 ±600 上跑了几十分钟都没人
+# 提醒。改这个值时两边一起改。
+COIL_CMD_LIMIT = 600
+
 
 def ore_offset(bx, by, bz, h):
     """由磁场反算矿石横向偏移, 返回 (x, y) 单位 0.1mm; 不可信时返回 None。
@@ -474,7 +479,7 @@ class Tuner(QMainWindow):
         gb_test = QGroupBox("开环单路测试 (裸驱动, 不经增益校正)")
         tl = QGridLayout(gb_test)
         self.sl_test = QSlider(Qt.Horizontal)
-        self.sl_test.setRange(-850, 850)
+        self.sl_test.setRange(-COIL_CMD_LIMIT, COIL_CMD_LIMIT)
         self.sl_test.setValue(0)
         self.sl_test.valueChanged.connect(self._test_slider)
         self.lb_test = QLabel("0")
@@ -880,9 +885,17 @@ class Tuner(QMainWindow):
             elif sr < 900:
                 tags.append(f"传感器 {sr} Hz")
         # 饱和时环路实际是断开的 —— 比例项不再起作用, 调什么参数都看不出效果
-        nsat = sum(1 for c in d["coils"] if abs(c) >= 850)
-        if nsat:
-            tags.append(f"⚠ 线圈饱和 {nsat}/4  —— kp_xy 太大或目标高度没对齐")
+        # 固件的失控保护要【四路同时】顶限幅才断电, 但环路失去权限用不着四路 ——
+        # 象限混合下 (u_x,u_y) 指向某条对角线时, 全部输出都落在【一对】线圈上,
+        # 那一对饱和就等于那个方向上再也推不动了, 而另一对还在零附近晃, 看着很正常。
+        # 所以这里两路就报, 并把是哪几路说出来。
+        sat_ch = [n for n, c in zip("ABCD", d["coils"]) if abs(c) >= COIL_CMD_LIMIT]
+        nsat = len(sat_ch)
+        if nsat >= 2:
+            tags.append(f"⚠ 线圈饱和 {''.join(sat_ch)} ({nsat}/4)"
+                        f"  —— 该方向已无控制权限; 查 trim 是否卷绕")
+        elif nsat:
+            tags.append(f"线圈 {sat_ch[0]} 顶限幅")
         self.lb_info.setText("   ".join(tags))
         self.lb_info.setStyleSheet("color:#f05050" if nsat else "")
 

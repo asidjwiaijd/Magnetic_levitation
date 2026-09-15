@@ -438,6 +438,11 @@ static void solve_yaw(void)
  *
  * 【使用要求】矿石必须用非磁性夹具固定在工作高度上。标定期间四路会轮流通 ±400,
  * 矿石若是自由悬浮会被推得到处跑, 测出来的斜率里混的是矿石位移而不是串扰。 */
+#if LEV_REF_MODE
+/* 本分支不调用它, 但保留代码 —— 切回 LEV_REF_MODE=0 就该立刻可用, 不希望
+ * 这里出现"另一个模式下已经编译不过了"的情况。 */
+__attribute__((unused))
+#endif
 static void measure_crosstalk(void)
 {
     uint8_t ch, i;
@@ -526,7 +531,13 @@ static void calibrate_crosstalk(void)
     by0 = (float)zy;
     bz0 = (float)zz;
 
+#if LEV_REF_MODE
+    /* 参考工程模式: 只标零点。见 board.h 的 LEV_REF_MODE ——
+     * 串扰系数留在全 0、dir_gain 留在 1、yaw 留在单位阵, 于是 sense() 里
+     * 那几步补偿算术自动成为恒等变换, 不需要额外的分支。 */
+#else
     measure_crosstalk();
+#endif
 }
 
 /* 只重测串扰, 保留已标好的零点。带矿石标定时用。 */
@@ -538,6 +549,12 @@ uint8_t Levitation_CalibrateTilt(void)
     float bx, by, bz;
     float kc = g_tune.yaw_cos, ks = g_tune.yaw_sin;
     uint8_t bad;
+
+#if LEV_REF_MODE
+    /* 本分支不做任何姿态标定 —— 倾斜偏置交给 trim 吃。返回错误而不是静默,
+     * 免得误点之后以为标过了。 */
+    return 1;
+#endif
 
     /* tilt 是在【传感器自己的坐标系】里定义的, 而 sense() 会先扣 tilt 再做 yaw
      * 旋转。所以标定期间两者都要暂时置成"不校正":
@@ -562,8 +579,13 @@ uint8_t Levitation_CalibrateTilt(void)
 
 void Levitation_RecalCrosstalk(void)
 {
+#if LEV_REF_MODE
+    /* 本分支不标串扰。留空而不是照标 —— 一旦标了, ct_pos/ct_neg 就不再是 0,
+     * 补偿链路会悄悄激活, 本分支"最小逻辑"的前提就没了。 */
+#else
     measure_crosstalk();
     reset_pid();
+#endif
 }
 
 void Levitation_Init(void)
@@ -774,7 +796,14 @@ void Levitation_Task(void)
     }
 
     /* ---- 矿石在不在? ---- */
+#if LEV_REF_MODE
+    /* 固定阈值。ORE_PRESENT_MIN_BZ/ORE_TOO_CLOSE_BZ 是从 kz 与 H_SENSOR_OFFSET
+     * 推出来的, 而这两个常数现在已知过期 —— 门限落错地方会让环路直接掉回
+     * IDLE 断电, 现象是"浮不起来", 极容易误判成环路没调好。 */
+    if(bz_mag < REF_ORE_MIN_BZ || bz_mag > REF_ORE_MAX_BZ)
+#else
     if(bz_mag < (float)ORE_PRESENT_MIN_BZ || bz_mag > (float)ORE_TOO_CLOSE_BZ)
+#endif
     {
         /* 没检测到矿石, 或者矿石已经贴到底座上 —— 两种情况都不该继续通电 */
         Coil_DisableAll();
@@ -845,6 +874,13 @@ void Levitation_Task(void)
      * "先稳一阵, 然后越晃越大直到飞掉"。
      * 这里把读数折算成"标称高度下的等效读数", 环路增益就与高度无关了。
      * 标称高度处系数恰为 1, 所以 kp_xy 的含义不变, 不需要重调。 */
+#if LEV_REF_MODE
+    /* 本分支关掉归一化。它是 (r/r_nom)^4, 依赖 kz 与 H_SENSOR_OFFSET, 而这两个
+     * 常数现在已知过期 —— 四次方会把它们的误差放大成几倍的增益偏差, 比不做
+     * 归一化更危险。参考工程也没有这一项。 */
+    (void)lat_norm;
+    lat_norm_f = 1.0f;
+#else
     lat_norm = ((float)h + (float)H_SENSOR_OFFSET) /
                ((float)target_h_01mm + (float)H_SENSOR_OFFSET);
     lat_norm = lat_norm * lat_norm * lat_norm * lat_norm;
@@ -852,6 +888,7 @@ void Levitation_Task(void)
     if(lat_norm < LAT_NORM_MIN) lat_norm = LAT_NORM_MIN;
     /* 先滤再用: 四次方放大了 Bz 的噪声, 而这个系数直接乘在输出上。 */
     lat_norm_f += LAT_NORM_LPF * (lat_norm - lat_norm_f);
+#endif
 
     /* 归一化乘在【输出】上, 不是乘在 bx 上。乘在输入上的话微分项会把 lat_norm
      * 自己的抖动也微分一遍 —— 系数抖 0.5% 在 bx=100 时就是 60 的微分输出, 和

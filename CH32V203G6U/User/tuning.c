@@ -27,7 +27,7 @@ tune_t g_tune = {
     0.0f, 0.0f,                         /* tilt_x, tilt_y: 未标定 = 不校正 */
     1.0f, 0.0f,                         /* yaw: 单位旋转 */
     XY_LPF_DEF,
-    TRIM_K_DEF, TRIM_LIM_DEF
+    TRIM_K_DEF, TRIM_LIM_DEF, TRIM_GATE_DEF
 };
 
 /* 结构体必须是纯 float 连续排列, 参数 ID 才能当下标用。字段数对不上就编译不过。*/
@@ -44,7 +44,7 @@ static const char * const param_names[TUNE_PARAM_COUNT] = {
     "sign_a", "sign_b", "sign_c", "sign_d",
     "ct_lag",
     "tilt_x", "tilt_y", "yaw_cos", "yaw_sin",
-    "xy_lpf", "trim_k", "trim_lim"
+    "xy_lpf", "trim_k", "trim_lim", "trim_gate"
 };
 
 static uint8_t  stream_div;         /* 0 = 关闭 */

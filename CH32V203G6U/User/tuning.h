@@ -67,13 +67,15 @@ typedef struct {
     float yaw_cos, yaw_sin;             /* 20,21 */
     /* 移植自参考工程 magnetic-levitation, 详见 board.h 的说明
      *   xy_lpf:   横向读数在进入 P/D 之前的一阶低通, 1.0 = 不滤
-     *   trim_k:   设定点自整定的积分增益, 被积量是线圈出力, 0 = 关闭
-     *   trim_lim: trim 的钳位, 兼作积分门限 */
+     *   trim_k:    设定点自整定的积分增益, 被积量是线圈出力, 0 = 关闭
+     *   trim_lim:  trim 的钳位
+     *   trim_gate: 积分门限, |bx-trim| 超过它就停积分。必须明显小于 trim_lim,
+     *              否则门限永远不会先于钳位动作(推导见 board.h) */
     float xy_lpf;                       /* 22 */
-    float trim_k, trim_lim;             /* 23,24 */
+    float trim_k, trim_lim, trim_gate;  /* 23,24,25 */
 } tune_t;
 
-#define TUNE_PARAM_COUNT    25
+#define TUNE_PARAM_COUNT    26
 
 extern tune_t g_tune;
 

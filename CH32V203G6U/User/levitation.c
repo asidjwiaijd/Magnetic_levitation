@@ -928,16 +928,24 @@ void Levitation_Task(void)
      * 积分随即停下, 不会跟着一起跑飞。 */
     if(g_tune.trim_k != 0.0f)
     {
-        float lim = g_tune.trim_lim;
-        if(lim < 0.0f) lim = 0.0f;
+        float lim  = g_tune.trim_lim;
+        float gate = g_tune.trim_gate;
+        if(lim  < 0.0f) lim  = 0.0f;
+        if(gate < 0.0f) gate = 0.0f;
 
-        if(fabs_f(ex) < lim)
+        /* 门限问的是"环路到底跟没跟上", 不是"矿石偏了多少":
+         * 环路正常时 trim 一动矿石就跟着动, ex 始终在 0 附近, 门限不碍事;
+         * 环路推不动矿石时(kp 太小 / kd=0) 这条链断开, 只剩 trim 自己那圈
+         * 正反馈, 此时 ex ≈ -trim 会跟着 trim 一起长, 于是被门限拦住。
+         * 所以 gate 必须明显小于 lim —— 两者相等的话它们同时到达, 门限
+         * 永远不可能先动。详见 board.h 的 TRIM_GATE_DEF。 */
+        if(fabs_f(ex) < gate)
         {
             bx_trim += g_tune.trim_k * u_x;
             if(bx_trim >  lim) bx_trim =  lim;
             if(bx_trim < -lim) bx_trim = -lim;
         }
-        if(fabs_f(ey) < lim)
+        if(fabs_f(ey) < gate)
         {
             by_trim += g_tune.trim_k * u_y;
             if(by_trim >  lim) by_trim =  lim;

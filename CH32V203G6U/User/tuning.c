@@ -24,11 +24,11 @@ tune_t g_tune = {
     (float)LATERAL_SIGN,
     { 0, 0, 0, 0 },                     /* 由 Tuning_Init 从 COIL_SIGN_INIT 填 */
     CT_LAG_DEF,
-    0.0f, 0.0f,                         /* tilt_x, tilt_y: 未标定 = 不校正 */
-    1.0f, 0.0f,                         /* yaw: 单位旋转 */
+    TILT_X_DEF, TILT_Y_DEF,             /* 传感器倾角, 实测 */
+    YAW_COS_DEF, YAW_SIN_DEF,           /* 面内旋转, 实测 */
     XY_LPF_DEF,
     TRIM_K_DEF, TRIM_LIM_DEF, TRIM_GATE_DEF,
-    0.0f, 0.0f,                         /* trim_x, trim_y: 零点偏置 */
+    TRIM_X_DEF, TRIM_Y_DEF,             /* 零点偏置, 实测 */
     1.0f,                               /* gain_y: 轴比值 */
     { 1.0f, 1.0f, 1.0f, 1.0f }          /* coil_gain: 每路强度 */
 };

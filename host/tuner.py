@@ -89,7 +89,7 @@ def ore_offset(bx, by, bz, h):
     两个前提必须记住:
       1. h 来自固件的 kz 换算。kz 没标定时 x 的绝对刻度跟着错, 但方向和相对
          变化仍然可信 —— 判极性、看振荡够用, 读"偏了几毫米"不够。
-      2. 倾斜和横移在单颗传感器上简并(CLAUDE.md), 这里给的是"等效横移", 不是
+      2. 倾斜和横移在单颗传感器上简并, 这里给的是"等效横移", 不是
          真实位置。h=3cm 时 5.7° 的倾斜会显示成 1mm 偏移。
     """
     if abs(bz) < ORE_PRESENT_MIN_BZ or h <= 0:
@@ -599,7 +599,7 @@ class Tuner(QMainWindow):
             L = LIMIT_01MM
             self.p_xy.plot([-L, L, L, -L, -L], [-L, -L, L, L, -L],
                            pen=pg.mkPen("#f05050", width=1, style=Qt.DashLine))
-            # 四个线圈的方位标出来, 省得每次回去翻 CLAUDE.md 里那张图。坐标给的是
+            # 四个线圈的方位直接标出来, 不用另外查图。坐标给的是
             # 传感器象限, 翻转由 invertX/Y 负责 —— 改视角时这张表不用动。
             for name, (qy, qx) in zip(COIL_NAMES,
                                       [(-1, 1), (1, -1), (-1, -1), (1, 1)]):

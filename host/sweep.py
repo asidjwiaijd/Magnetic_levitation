@@ -47,7 +47,7 @@ LEVELS = [0, 200, 400, 600, 800, -200, -400, -600, -800]
 TEMP_ABORT = 60             # ℃, 超过就中止
 KEEPALIVE_S = 0.4
 
-# 换算用的常数 (与 board.h / CLAUDE.md 一致)
+# 换算用的常数 (与 board.h 一致)
 COUNTS_PER_MM = 23.0        # r=45mm 处, 1mm 横移 ≈ 23 counts
 KD_XY = 0.064               # 当前默认值, 用于折算 D 项噪声
 DLPF_XY = 0.40

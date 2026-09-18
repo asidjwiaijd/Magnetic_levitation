@@ -1,6 +1,9 @@
 # build.sh 的产物, 每次编译重生成
 /build/
 
+# 本地工具链的说明文件, 不属于工程本身, 不随仓库发布
+/CLAUDE.md
+
 # 参考工程 (Aaa-Dai/magnetic-levitation), 自带 .git 且 52MB, 不纳入本仓库。
 # 路径要写全: 原来的 /magnetic-levitation/ 早已过期(实际在 reference/ 下),
 # 规则没生效, 于是它以 gitlink 的形式被提交了进来 —— 而仓库里没有 .gitmodules,

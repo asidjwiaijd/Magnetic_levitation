@@ -1,8 +1,11 @@
 # build.sh 的产物, 每次编译重生成
 /build/
 
-# 参考工程, 自带 .git 且 52MB, 不纳入本仓库
-/magnetic-levitation/
+# 参考工程 (Aaa-Dai/magnetic-levitation), 自带 .git 且 52MB, 不纳入本仓库。
+# 路径要写全: 原来的 /magnetic-levitation/ 早已过期(实际在 reference/ 下),
+# 规则没生效, 于是它以 gitlink 的形式被提交了进来 —— 而仓库里没有 .gitmodules,
+# 克隆者只会拿到一个拉不下来的空目录。文件本体留在本地, 但不进版本控制。
+/reference/magnetic-levitation/
 
 # MRS 在 obj/ 下的构建产物。makefile / *.mk 是构建系统本体, 必须保留,
 # 只忽略编译出来的东西。
